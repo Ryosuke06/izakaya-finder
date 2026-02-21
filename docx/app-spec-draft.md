@@ -42,11 +42,28 @@
 
 `IzakayaSearchRequestSchema`（`ai-api/schemas/izakaya.ts`）
 
-- `location`: 検索地点（必須文字列）
-- `people`: 人数（1〜50の整数）
-- `mood`: 雰囲気スコア（0〜100）
-- `allYouCanDrink`: 飲み放題重視フラグ（既定 `false`）
-- `beerRequired`: ビール必須フラグ（既定 `false`）
+- `area`: エリア指定（最優先）
+  - `mode`: `current_location | station_input`
+  - `station`: 駅名（`station_input` のとき必須）
+  - デフォルトは現在地。位置情報が使えない場合は駅名入力へフォールバック
+  - 駅入力はサジェスト対応（例: 新宿 / 渋谷 / 池袋）
+- `people`: 人数
+  - `1〜8` はステッパー入力
+  - `9+` は団体フラグで表現
+- `budget`: 予算
+  - `up_to_3000 | up_to_5000 | up_to_8000 | unspecified`
+- `allYouCanDrink`: 飲み放題重視フラグ（既存仕様を維持、既定 `false`）
+- `beerRequired`: ビール必須フラグ（既存仕様を維持、既定 `false`）
+- `moodTags`: 雰囲気（複数選択）
+  - `waiwai | calm | date | colleagues | solo | with_boss`
+- `preferences`: こだわり（複数選択、折りたたみUI）
+  - 例: `smoking | non_smoking | private_room | all_you_can_drink | counter | late_night`
+
+### 5.1.1 UI操作仕様（入力）
+
+- 画面下固定ボタン: 「この条件で探す」
+- 条件が少ない場合は「おすすめで探す」導線を表示可能にする
+- 現在地が許可されない場合は、駅名入力UIへ自動遷移する
 
 ### 5.2 候補データ保持
 
@@ -91,9 +108,17 @@
 
 ```json
 {
-  "location": "渋谷",
-  "people": 4,
-  "mood": 70,
+  "area": {
+    "mode": "station_input",
+    "station": "渋谷"
+  },
+  "people": {
+    "count": 4,
+    "isGroup": false
+  },
+  "budget": "up_to_5000",
+  "moodTags": ["waiwai", "colleagues"],
+  "preferences": ["private_room", "late_night"],
   "allYouCanDrink": true,
   "beerRequired": false
 }
