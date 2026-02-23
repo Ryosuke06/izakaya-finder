@@ -38,6 +38,30 @@
 
 ## 5. 機能要件（ドラフト）
 
+### 5.0 スキーマ役割整理（LangGraph）
+
+- `IzakayaSearchRequestSchema`
+  - ユーザー入力（検索条件）を表すスキーマ
+  - `SearchState.request` の型として利用する
+- `CandidateSchema`
+  - 候補店舗1件を表すスキーマ
+  - `SearchState.candidates` の配列要素として利用する
+- `RecommendationItemSchema`
+  - 推薦結果1件を表すスキーマ
+  - `SearchState.ranked` の配列要素として利用する
+- `SearchStateSchema`
+  - LangGraph 全体で受け渡す状態スキーマ
+  - `request`, `candidates`, `ranked`, `summary`, `traceId`, `traceUrl` を含む
+
+#### Node return の考え方
+
+- 各ノードは `SearchState` 全体を受け取る
+- 各ノードの return は「state 全体」ではなく「更新したいキーのみ」を返す
+  - `fetchCandidates` は `candidates` を更新
+  - `rankCandidates` は `ranked` を更新
+  - `buildSummary` は `summary` を更新
+- これにより、段階処理（候補収集→順位付け→要約）を安全に分離できる
+
 ### 5.1 入力条件
 
 `IzakayaSearchRequestSchema`（`ai-api/schemas/izakaya.ts`）
@@ -48,16 +72,15 @@
   - デフォルトは現在地。位置情報が使えない場合は駅名入力へフォールバック
   - 駅入力はサジェスト対応（例: 新宿 / 渋谷 / 池袋）
 - `people`: 人数
-  - `1〜8` はステッパー入力
-  - `9+` は団体フラグで表現
+  - `1〜50` の整数で指定
 - `budget`: 予算
   - `up_to_3000 | up_to_5000 | up_to_8000 | unspecified`
 - `allYouCanDrink`: 飲み放題重視フラグ（既存仕様を維持、既定 `false`）
 - `beerRequired`: ビール必須フラグ（既存仕様を維持、既定 `false`）
 - `moodTags`: 雰囲気（複数選択）
   - `waiwai | calm | date | colleagues | solo | with_boss`
-- `preferences`: こだわり（複数選択、折りたたみUI）
-  - 例: `smoking | non_smoking | private_room | all_you_can_drink | counter | late_night`
+- `preferences`: こだわり自由記述（任意）
+  - 例: 「禁煙で個室希望。終電後も営業している店」
 
 ### 5.1.1 UI操作仕様（入力）
 
@@ -112,13 +135,10 @@
     "mode": "station_input",
     "station": "渋谷"
   },
-  "people": {
-    "count": 4,
-    "isGroup": false
-  },
+  "people": 4,
   "budget": "up_to_5000",
   "moodTags": ["waiwai", "colleagues"],
-  "preferences": ["private_room", "late_night"],
+  "preferences": "禁煙で個室希望",
   "allYouCanDrink": true,
   "beerRequired": false
 }
