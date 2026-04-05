@@ -200,23 +200,44 @@
 
 - 入力スキーマ定義（`ai-api/schemas/izakaya.ts`）
 - 検索状態/型定義（`ai-api/graphs/izakayaSearchGraph.ts`）
+- SearchGraph 本体の接続
+  - `START -> fetchCandidates -> rankCandidates -> buildSummary -> END`
+- 候補収集ノード（`ai-api/graphs/nodes/fetchCandidatesNode.ts`）
+  - `SearchState.request` をもとに LLM へ候補収集を依頼
+  - `Candidate[]` を `zod` で検証して返却
+- ランキングノード（`ai-api/graphs/nodes/rankCandidatesNode.ts`）
+  - `request` と `candidates` をもとに LLM へ順位付けを依頼
+  - `RecommendationItem[]` を `zod` で検証して返却
+- 要約ノード（`ai-api/graphs/nodes/buildSummaryNode.ts`）
+  - `request` と `ranked` をもとに LLM へ要約生成を依頼
+  - `{ summary: string }` を返却
+- API Route（`app/api/izakaya/search/route.ts`）
+  - `req.json()` を `IzakayaSearchRequestSchema` で検証
+  - `createInitialSearchState(...)` を生成して `graph.invoke(...)` を実行
+  - 成功時は Graph の最終 state を JSON 返却
+  - バリデーションエラーは `400`、その他は `500`
+- Graph 関連の TypeScript 型チェック
+  - `pnpm -s tsc --noEmit` 上、Graph 関連では追加エラーなし
+  - 残件は `sample.ts` の別件エラーのみ
 
 ### 10.2 未実装・要修正
 
-- 検索実行グラフ本体
-- API ルート
+- API Route の疎通確認
 - UI 画面
-- `ai-api/libs/LangChain.ts` の実処理
-- 環境変数名の統一（`gemini` 表記ゆれを含む）
+- Langfuse 連携
+- スコアリング/候補抽出の精度改善
+- `sample.ts` の別件型エラー解消
 
 ## 11. 今後の実装優先順（提案）
 
-1. API ルートの作成と `zod` バリデーション
-2. SearchGraph のノード実装（候補収集/評価/要約）
+1. API Route 経由での Graph 実行確認
+2. トレーシング（Langfuse）連携
 3. 最小 UI（フォーム + 結果表示）
-4. トレーシング（Langfuse）連携
-5. スコアリングロジックの改善
+4. スコアリングロジックの改善
+5. `sample.ts` の別件型エラー解消
 
 ## 12. 変更履歴
 
 - v0.1-draft: 初版下書き作成
+- 2026-04-05: Graph の3 Node実装状況と次の優先タスクを更新
+- 2026-04-05: `POST /api/izakaya/search` の API Route を追加し、入力検証と Graph 起動入口を実装
