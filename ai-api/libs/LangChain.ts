@@ -1,5 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
 
-const Gemini_API_KEY = process.env.izakaya_found_gimini_api;
+const geminiApiKey = process.env.GEMINI_API_KEY;
 
-export const ai = new GoogleGenAI({ apiKey: Gemini_API_KEY });
+if (!geminiApiKey) {
+  throw new Error("Missing env: GEMINI_API_KEY");
+}
+
+export const ai = new GoogleGenAI({ apiKey: geminiApiKey });

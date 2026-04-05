@@ -40,5 +40,3 @@ export const graph = new StateGraph(StateAnnotation)
   .addEdge("rankCandidates", "buildSummary")
   .addEdge("buildSummary", END)
   .compile();
-
-// await graph.invoke({messages: [{role: "user", context: Message}] });
