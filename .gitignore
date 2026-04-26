@@ -43,3 +43,5 @@ next-env.d.ts
 memo.txt
 
 /ai-api/.env
+
+/langfuse
