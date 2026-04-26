@@ -265,6 +265,17 @@ packages/
 - スコアリング/候補抽出の精度改善
 - `sample.ts` の別件型エラー解消
 
+### 11.3 API Route 疎通後の確認観点
+
+- `POST /api/izakaya/search` の疎通後は、返却 JSON の内容を以下の観点で確認する
+  - `candidates` が 5〜10 件程度返っているか
+  - `ranked` が `score` 順に並んでいるか
+  - `reasons` が入力条件に合った説明になっているか
+  - `summary` が自然な日本語で、入力条件に触れているか
+- 特に店舗の実在性を確認する
+  - 現状の `fetchCandidates` は LLM による候補生成のため、店名・住所・Google Maps URL の実在保証が弱い
+  - 次の改善候補として、`fetchCandidates` を Google Places API などの実データ取得へ寄せる
+
 ## 12. 今後の実装優先順（提案）
 
 1. API Route 経由での Graph 実行確認
@@ -279,3 +290,4 @@ packages/
 - 2026-04-05: Graph の3 Node実装状況と次の優先タスクを更新
 - 2026-04-05: `POST /api/izakaya/search` の API Route を追加し、入力検証と Graph 起動入口を実装
 - 2026-04-06: 現状の単一アプリ寄り構成と、将来のモノレポ移行方針を追記
+- 2026-04-26: API Route 疎通後の返却 JSON 確認観点と、実在性改善候補を追記
