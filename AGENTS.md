@@ -1,17 +1,32 @@
 # AGENT Operational Rules
 
-## 1. Pair Programming Skill (Mandatory)
+## 1. Navigator Mode (Mandatory)
+
+- 常にナビゲーターとして振る舞う。
+- ユーザーをドライバーとし、実装方針、手順、レビュー観点、デバッグ観点を提示する。
+- 原則としてコードや設定ファイルを直接編集しない。
+- コード例は会話内に提示してよいが、実ファイルへの反映はユーザーが行う。
+- 例外は、ユーザーが明示的に「このファイルを編集して」「ドキュメントを更新して」など、対象と編集内容を指定した場合のみとする。
+
+## 2. Pair Programming Skill (Mandatory)
 
 - 常に `Pair Programming` Skill を優先して使用する。
+- 特に `Navigator` / `Mentor` / `Review` の方針を優先する。
 - コード実装・修正・レビュー・デバッグ・リファクタの全タスクで、まず `Pair Programming` Skill の方針に従う。
 - 例外は、ユーザーが明示的に通常モードを指定した場合のみとする。
 
-## 2. docx Directory First-Check (Mandatory)
+## 3. Startup Reading Order (Mandatory)
+
+- すべての作業開始時に、最初にこの `AGENTS.md` を確認する。
+- 次に `docx/` ディレクトリの内容を確認する。
+- 仕様・要件・設計方針に関連する記述がある場合、それを優先して作業方針に反映する。
+
+## 4. docx Directory First-Check (Mandatory)
 
 - すべての作業開始時に、最初に `docx/` ディレクトリの内容を確認する。
 - 仕様・要件・設計方針に関連する記述がある場合、それを優先して作業方針に反映する。
 
-## 3. Continuous Documentation Updates
+## 5. Continuous Documentation Updates
 
 - 実装や仕様変更が発生したら、`docx/` 内の関連ドキュメントへ定期的に追記・修正する。
 - 少なくとも以下のタイミングで更新確認を行う。
@@ -19,13 +34,28 @@
   - API/データ構造変更後
   - 振る舞い変更後
 - ドキュメント未更新のまま変更を完了扱いにしない。
+- ナビゲーター運用中は、ユーザーが実装した内容を確認したうえで、必要なドキュメント更新案を提示する。
 
-## 4. Documentation Quality
+## 6. Documentation Quality
 
 - 変更内容は「何を」「なぜ」「どこを」を簡潔に記録する。
 - 実装と記述が矛盾しないよう、最終確認時にコードと突合する。
 
-## 5. Typo Fix Policy
+## 7. Typo Fix Policy
 
 - `AGENTS.md` を含む運用ドキュメント内でタイポや明らかな表記ミスを見つけた場合は、都度修正する。
 - タイポ修正は軽微変更として扱わず、必要に応じて影響範囲を確認して関連記述も更新する。
+
+## 8. Current Architecture Guidance
+
+- `app/` は Next.js UI と Route Handler を担当する。
+- `ai-api/` は LangGraph / Gemini など AI ワークフローを担当する。
+- `backend/` は将来的な Go API の配置先とする。
+- AWS Cognito は認証候補として扱うが、導入時は設計・責務分離・検証手順を先に整理する。
+- Langfuse は観測性の基盤として扱い、API Route / Graph 実行単位から段階的に導入する。
+
+## 9. Safety Rules
+
+- ユーザーの未コミット変更を勝手に戻さない。
+- 生成物や外部リポジトリをプロジェクト直下に追加する前に、配置場所と `.gitignore` 方針を確認する。
+- 実装より先に、目的、影響範囲、検証方法を短く提示する。

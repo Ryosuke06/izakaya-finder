@@ -189,6 +189,7 @@
 - Next.js 16
 - React 19
 - TypeScript
+- Go（backend API）
 - LangChain / LangGraph
 - Zod
 - OpenAI SDK（導入済み）
@@ -201,8 +202,20 @@
 - 現在は単一リポジトリ内に役割別ディレクトリを置く構成とする
 - `app/` は Next.js App Router の画面と API Route の入口を担当する
 - `ai-api/` は AI による候補収集、順位付け、要約生成などの処理を担当する
-- `backend/` は将来的に独立したサーバー処理が必要になった場合に追加する想定とする
+- `backend/` は Go によるユーザー向け API と駅候補管理を担当する
 - この段階では「1つのアプリをフォルダで整理している状態」であり、まだモノレポ化はしていない
+
+### 10.1.1 Go backend の責務
+
+- `backend/` は Next.js / LangGraph から独立した Go API として実装する
+- 初期責務は以下に絞る
+  - ヘルスチェック
+  - 駅サジェスト
+  - ユーザーごとの駅設定（自宅・よく使う駅など）
+- 居酒屋検索 AI 本体は当面 `ai-api/` の TypeScript / LangGraph 側に残す
+- 認証は将来的に AWS Cognito を使う方針
+  - 現時点では `AUTH_MODE=none|dev|cognito` の設定受け口を用意する
+  - `cognito` モードの JWT 検証は未実装で、今後の追加対象とする
 
 ### 10.2 モノレポ化に関する判断
 
@@ -253,6 +266,13 @@ packages/
   - `createInitialSearchState(...)` を生成して `graph.invoke(...)` を実行
   - 成功時は Graph の最終 state を JSON 返却
   - バリデーションエラーは `400`、その他は `500`
+- Go backend 方針（`backend/`）
+  - `GET /health`
+  - `GET /stations/suggestions?q=渋`
+  - `GET /users/me/stations`
+  - `POST /users/me/stations`
+  - 初期実装案は標準ライブラリのみで、ユーザー駅設定はインメモリ保持
+  - 現時点では方針整理段階であり、実ファイルは未追加
 - Graph 関連の TypeScript 型チェック
   - `pnpm -s tsc --noEmit` 上、Graph 関連では追加エラーなし
   - 残件は `sample.ts` の別件エラーのみ
@@ -262,6 +282,8 @@ packages/
 - API Route の疎通確認
 - UI 画面
 - Langfuse 連携
+- Cognito JWT 検証
+- Go backend の永続化（DB）
 - スコアリング/候補抽出の精度改善
 - `sample.ts` の別件型エラー解消
 
@@ -281,8 +303,10 @@ packages/
 1. API Route 経由での Graph 実行確認
 2. トレーシング（Langfuse）連携
 3. 最小 UI（フォーム + 結果表示）
-4. スコアリングロジックの改善
-5. `sample.ts` の別件型エラー解消
+4. Go backend と UI の接続（駅サジェスト・ユーザー駅設定）
+5. Cognito JWT 検証の追加
+6. スコアリングロジックの改善
+7. `sample.ts` の別件型エラー解消
 
 ## 13. 変更履歴
 
@@ -291,3 +315,4 @@ packages/
 - 2026-04-05: `POST /api/izakaya/search` の API Route を追加し、入力検証と Graph 起動入口を実装
 - 2026-04-06: 現状の単一アプリ寄り構成と、将来のモノレポ移行方針を追記
 - 2026-04-26: API Route 疎通後の返却 JSON 確認観点と、実在性改善候補を追記
+- 2026-04-26: Go backend の初期責務案、駅サジェスト API 案、ユーザー駅設定 API 案、Cognito 方針を追記
