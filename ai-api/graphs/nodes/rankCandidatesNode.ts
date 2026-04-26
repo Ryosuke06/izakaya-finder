@@ -38,6 +38,14 @@ export async function rankCandidates(
   5. request との一致度
   6. 飲み放題やビールに関する明示的な記述
 
+     JSON 出力ルール:
+    - null は絶対に出力しない
+    - 値が不明な optional field は、null ではなくキーごと省略する
+    - evidence.allYouCanDrinkHit は根拠テキストがある場合だけ出力する
+    - evidence.beerHit は根拠テキストがある場合だけ出力する
+    - evidence に根拠が1つもない場合は、空オブジェクト {} を返す
+    - meta.rating, meta.userRatingsTotal, meta.priceLevel, meta.googleMapsUrl, meta.website も不明ならキーごと省略する
+
   request:
   ${JSON.stringify(state.request, null, 2)}
 
