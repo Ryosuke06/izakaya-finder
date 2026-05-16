@@ -281,11 +281,13 @@ packages/
 
 - API Route の疎通確認
 - UI 画面
-- Langfuse 連携
+- Langfuse 連携の最小完成
+  - `app/api/izakaya/search/route.ts` には Langfuse callback 呼び出しがある
+  - ただし、環境変数未設定時の扱い、命名 typo、`traceId` / `traceUrl` の state 反映は未整理
+  - 現状は「未着手」ではなく「途中実装」として扱う
 - Cognito JWT 検証
 - Go backend の永続化（DB）
 - スコアリング/候補抽出の精度改善
-- `sample.ts` の別件型エラー解消
 
 ### 11.3 API Route 疎通後の確認観点
 
@@ -300,13 +302,20 @@ packages/
 
 ## 12. 今後の実装優先順（提案）
 
-1. API Route 経由での Graph 実行確認
-2. トレーシング（Langfuse）連携
+1. API Route + Langfuse の最小完成
+   - `POST /api/izakaya/search` を実際に1回通す
+   - Langfuse 環境変数が未設定でも検索 API が壊れないようにする
+   - `createLangfudeCallback` / `izakayaLangGtaph` などの typo を整理する
+   - 可能なら `traceId` / `traceUrl` をレスポンス state に含める
+2. 候補取得を LLM 生成から実データ寄りにする
+   - 現状の `fetchCandidates` は LLM に候補店舗を生成させている
+   - 架空店舗混入リスクを下げるため、Google Places API など実データ取得へ寄せる
 3. 最小 UI（フォーム + 結果表示）
+   - 現状の Server Action は `graph.invoke(...)` の結果を画面に返していない
+   - API と返却 JSON の品質確認後に、推薦結果・理由・要約を表示する
 4. Go backend と UI の接続（駅サジェスト・ユーザー駅設定）
 5. Cognito JWT 検証の追加
 6. スコアリングロジックの改善
-7. `sample.ts` の別件型エラー解消
 
 ## 13. 変更履歴
 
@@ -316,3 +325,4 @@ packages/
 - 2026-04-06: 現状の単一アプリ寄り構成と、将来のモノレポ移行方針を追記
 - 2026-04-26: API Route 疎通後の返却 JSON 確認観点と、実在性改善候補を追記
 - 2026-04-26: Go backend の初期責務案、駅サジェスト API 案、ユーザー駅設定 API 案、Cognito 方針を追記
+- 2026-05-16: 次の優先実装を API Route + Langfuse の最小完成に整理
