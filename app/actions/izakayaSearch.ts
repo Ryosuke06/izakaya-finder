@@ -20,8 +20,13 @@ export async function searchIzakaya(formData: FormData) {
     preferences: String(formData.get("preferences")),
   };
 
-  const parsed = IzakayaSearchRequestSchema.parse(payload);
-  const initialState = createInitialSearchState(parsed);
+  const parsed = IzakayaSearchRequestSchema.safeParse(payload);
+  if (!parsed.success) {
+    console.error("Invalid izakaya search request", parsed.error.flatten());
+    return;
+  }
+
+  const initialState = createInitialSearchState(parsed.data);
 
   await graph.invoke(initialState);
 }
