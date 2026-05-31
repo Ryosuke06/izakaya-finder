@@ -305,7 +305,7 @@ packages/
 1. API Route + Langfuse の最小完成
    - `POST /api/izakaya/search` を実際に1回通す
    - Langfuse 環境変数が未設定でも検索 API が壊れないようにする
-   - `createLangfudeCallback` / `izakayaLangGtaph` などの typo を整理する
+   - `createLangfuseCallback` / `izakayaLangGtaph` などの typo を整理する
    - 可能なら `traceId` / `traceUrl` をレスポンス state に含める
 2. 候補取得を LLM 生成から実データ寄りにする
    - 現状の `fetchCandidates` は LLM に候補店舗を生成させている

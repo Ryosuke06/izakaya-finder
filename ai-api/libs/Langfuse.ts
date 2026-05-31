@@ -4,7 +4,7 @@ const secretkey = process.env.LANGFUSE_SECRET_KEY;
 const publickey = process.env.LANGFUSE_PUBLIC_KEY;
 const base = process.env.LANGFUSE_BASE_URL;
 
-export function createLangfudeCallback() {
+export function createLangfuseCallback() {
   return new CallbackHandler({
     publicKey: publickey,
     secretKey: secretkey,
