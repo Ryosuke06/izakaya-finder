@@ -45,3 +45,6 @@ memo.txt
 /ai-api/.env
 
 /langfuse
+/app/generated/prisma
+
+/generated/prisma
