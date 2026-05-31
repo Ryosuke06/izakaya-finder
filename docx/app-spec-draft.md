@@ -177,6 +177,52 @@
 }
 ```
 
+### 7.4 結果表示と Streaming 方針
+
+検索ボタン押下後は、検索リクエストを `Search` レコードとして保存し、結果表示ページへ遷移する。
+
+- 送信直後に `Search` レコードを作成する
+  - 初期状態は `pending` 相当として扱う
+  - リクエスト内容、人数、予算、飲み放題/ビール条件、雰囲気、自由記述を保存する
+- 作成した `Search.id` を使って `/results/[id]` へ redirect する
+- `/results/[id]` は結果表示用の Server Component とする
+  - 初期表示では保存済み request を読み取る
+  - 生成中 UI は Client Component に分離する
+- 段階的な AI 生成表示は AI SDK の `streamText` を使う方針とする
+  - streaming 用 Route Handler 例: `app/api/results/[id]/stream/route.ts`
+  - Client Component から streaming Route Handler を呼び出し、受信した chunk を順に画面へ反映する
+  - 生成完了後に最終結果を `Search.result` / `Search.summary` へ保存する
+
+初期段階の表示ステップは以下を想定する。
+
+1. 候補を探しています
+2. 候補を評価しています
+3. 要約を作成しています
+4. 完了
+
+設計上の責務分離:
+
+- `app/actions/izakayaSearch.ts`
+  - フォーム送信を受ける
+  - 入力検証を行う
+  - `Search` レコードを作成する
+  - `/results/[id]` へ redirect する
+- `app/results/[id]/page.tsx`
+  - `Search.id` をもとに DB から request / result を読み取る
+  - 結果表示の枠を提供する
+- `app/results/[id]/...` の Client Component
+  - streaming の受信状態を保持する
+  - 生成中の文言や段階的な AI 出力を描画する
+- `app/api/results/[id]/stream/route.ts`
+  - AI SDK `streamText` を使って生成結果を streaming する
+  - 完了時に DB へ最終結果を保存する
+
+参考:
+
+- Next.js Route Handler streaming: https://nextjs.org/docs/app/api-reference/file-conventions/route#streaming
+- Next.js loading / Suspense streaming: https://nextjs.org/learn/dashboard-app/streaming
+- AI SDK `streamText`: https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text
+
 ## 8. 非機能要件（ドラフト）
 
 - 型安全: TypeScript + `zod`
@@ -194,6 +240,7 @@
 - Zod
 - OpenAI SDK（導入済み）
 - Google GenAI 連携パッケージ（導入済み）
+- AI SDK（導入予定: `streamText` による生成結果の段階表示）
 
 ## 10. リポジトリ構成方針（現状と将来）
 
@@ -313,6 +360,7 @@ packages/
 3. 最小 UI（フォーム + 結果表示）
    - 現状の Server Action は `graph.invoke(...)` の結果を画面に返していない
    - API と返却 JSON の品質確認後に、推薦結果・理由・要約を表示する
+   - 結果表示は `/results/[id]` を基本形とし、AI SDK `streamText` による段階表示へ拡張する
 4. Go backend と UI の接続（駅サジェスト・ユーザー駅設定）
 5. Cognito JWT 検証の追加
 6. スコアリングロジックの改善
@@ -326,3 +374,4 @@ packages/
 - 2026-04-26: API Route 疎通後の返却 JSON 確認観点と、実在性改善候補を追記
 - 2026-04-26: Go backend の初期責務案、駅サジェスト API 案、ユーザー駅設定 API 案、Cognito 方針を追記
 - 2026-05-16: 次の優先実装を API Route + Langfuse の最小完成に整理
+- 2026-05-31: 検索結果表示を `/results/[id]` と AI SDK `streamText` による streaming 方針で整理
