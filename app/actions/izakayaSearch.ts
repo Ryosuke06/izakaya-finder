@@ -4,7 +4,12 @@ import {
   createInitialSearchState,
   graph,
 } from "@/ai-api/graphs/izakayaSearchGraph";
-import { IzakayaSearchRequestSchema } from "@/ai-api/schemas/izakaya";
+import {
+  IzakayaSearchRequestSchema,
+  SearchState,
+} from "@/ai-api/schemas/izakaya";
+import { prisma } from "../lib/db";
+import { redirect } from "next/navigation";
 
 export async function searchIzakaya(formData: FormData) {
   const payload = {
@@ -28,5 +33,25 @@ export async function searchIzakaya(formData: FormData) {
 
   const initialState = createInitialSearchState(parsed.data);
 
-  await graph.invoke(initialState);
+  const result: SearchState = await graph.invoke(initialState);
+
+  const search = await prisma.search.create({
+    data: {
+      station:
+        parsed.data.area.mode === "station_input"
+          ? parsed.data.area.station
+          : "",
+      people: parsed.data.people,
+      budget: parsed.data.budget,
+      allYouCanDrink: parsed.data.allYouCanDrink,
+      beerRequired: parsed.data.beerRequired,
+      moodTags: parsed.data.moodTags,
+      preferences: parsed.data.preferences,
+      request: parsed.data,
+      result,
+      summary: result.summary,
+    },
+  });
+
+  redirect(`/results/${search.id}`);
 }
