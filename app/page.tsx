@@ -1,4 +1,4 @@
-import { searchIzakaya } from "./actions/izakayaSearch";
+import { searchIzakaya } from "./_actions/izakayaSearch";
 
 export default function Home() {
   return (
