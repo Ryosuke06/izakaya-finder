@@ -202,14 +202,24 @@
 
 設計上の責務分離:
 
-- `app/actions/izakayaSearch.ts`
-  - フォーム送信を受ける
-  - 入力検証を行う
-  - `Search` レコードを作成する
-  - `/results/[id]` へ redirect する
+- `app/_actions/izakayaSearch.ts`
+  - Server Action としてフォーム送信を受ける
+  - 検索作成ユースケースを呼び出す
+  - 作成済み `Search.id` を使って `/results/[id]` へ redirect する
+- `app/lib/server/izakayaSearch/formSchema.ts`
+  - `FormData` をフォーム入力スキーマで検証する
+  - `"true"` / `"false"` などのフォーム文字列を boolean へ変換する
+  - 最終的に `IzakayaSearchRequestSchema` で内部検索リクエストとして再検証する
+- `app/lib/server/izakayaSearch/createSearch.ts`
+  - フォーム変換後の検索リクエストから Graph 実行用 state を作る
+  - `graph.invoke(...)` を実行する
+  - 検索結果を repository 経由で保存する
+- `app/lib/server/izakayaSearch/searchRepository.ts`
+  - Prisma による `Search` レコードの保存・取得を担当する
+  - `Search.result` は `SearchStateSchema` で検証してから結果ページへ渡す
 - `app/results/[id]/page.tsx`
-  - `Search.id` をもとに DB から request / result を読み取る
-  - 結果表示の枠を提供する
+  - `Search.id` をもとに server repository から request / result を読み取る
+  - 結果表示の枠を提供する Server Component とする
 - `app/results/[id]/...` の Client Component
   - streaming の受信状態を保持する
   - 生成中の文言や段階的な AI 出力を描画する
@@ -313,6 +323,22 @@ packages/
   - `createInitialSearchState(...)` を生成して `graph.invoke(...)` を実行
   - 成功時は Graph の最終 state を JSON 返却
   - バリデーションエラーは `400`、その他は `500`
+- Server Action / server usecase の責務分離
+  - `app/_actions/izakayaSearch.ts`
+    - フォーム送信の入口として `createIzakayaFromForm(...)` を呼び、作成済み検索IDへ redirect
+  - `app/lib/server/izakayaSearch/formSchema.ts`
+    - `FormData` をフォーム入力スキーマで検証
+    - `z.enum(["true", "false"]).transform(...)` で boolean へ変換
+    - `IzakayaSearchRequestSchema` で内部検索リクエストとして最終検証
+  - `app/lib/server/izakayaSearch/createSearch.ts`
+    - Graph 実行と DB 保存をまとめる検索作成ユースケース
+  - `app/lib/server/izakayaSearch/searchRepository.ts`
+    - Prisma による `Search` 保存と取得の入口
+- 結果表示ページの初期実装
+  - `app/results/[id]/page.tsx`
+    - URL の `id` を取得
+    - `findSearchResultById(id)` で保存済み検索結果を取得
+    - 現状は `summary` の表示まで実装途中
 - Go backend 方針（`backend/`）
   - `GET /health`
   - `GET /stations/suggestions?q=渋`
@@ -328,6 +354,10 @@ packages/
 
 - API Route の疎通確認
 - UI 画面
+  - `/results/[id]` は `summary` 表示まで実装途中
+  - `ranked` の店舗一覧、理由、スコア、リンク表示は未実装
+  - `findSearchResultById` は `SearchStateSchema.parse(...)` 後に `parsedResult` を返す形へ修正が必要
+  - 存在しない `Search.id` の扱いは `throw new Error(...)` ではなく `notFound()` へ寄せる
 - Langfuse 連携の最小完成
   - `app/api/izakaya/search/route.ts` には Langfuse callback 呼び出しがある
   - ただし、環境変数未設定時の扱い、命名 typo、`traceId` / `traceUrl` の state 反映は未整理
@@ -349,21 +379,28 @@ packages/
 
 ## 12. 今後の実装優先順（提案）
 
-1. API Route + Langfuse の最小完成
+1. `/results/[id]` の非 streaming 結果表示を完成する
+   - `findSearchResultById(id)` で `SearchStateSchema.parse(search.result)` の戻り値を使う
+   - レコード未存在時は `notFound()` を使う
+   - `summary` に加えて `ranked` の店舗名、住所、スコア、理由、Google Maps URL を表示する
+   - `pnpm -s tsc --noEmit` で型確認する
+2. Server Action / server usecase / repository の責務分離を仕上げる
+   - `app/_actions/izakayaSearch.ts` は redirect だけを担う薄い入口に保つ
+   - `formSchema.ts` はフォーム文字列から内部リクエストへの変換だけを担う
+   - `createSearch.ts` は Graph 実行と保存のユースケースに限定する
+   - `searchRepository.ts` は Prisma と永続化形式を担当する
+3. API Route + Langfuse の最小完成
    - `POST /api/izakaya/search` を実際に1回通す
    - Langfuse 環境変数が未設定でも検索 API が壊れないようにする
    - `createLangfuseCallback` / `izakayaLangGtaph` などの typo を整理する
    - 可能なら `traceId` / `traceUrl` をレスポンス state に含める
-2. 候補取得を LLM 生成から実データ寄りにする
+4. 候補取得を LLM 生成から実データ寄りにする
    - 現状の `fetchCandidates` は LLM に候補店舗を生成させている
    - 架空店舗混入リスクを下げるため、Google Places API など実データ取得へ寄せる
-3. 最小 UI（フォーム + 結果表示）
-   - 現状の Server Action は `graph.invoke(...)` の結果を画面に返していない
-   - API と返却 JSON の品質確認後に、推薦結果・理由・要約を表示する
-   - 結果表示は `/results/[id]` を基本形とし、AI SDK `streamText` による段階表示へ拡張する
-4. Go backend と UI の接続（駅サジェスト・ユーザー駅設定）
-5. Cognito JWT 検証の追加
-6. スコアリングロジックの改善
+5. AI SDK streaming 方針で段階表示を追加する
+6. Go backend と UI の接続（駅サジェスト・ユーザー駅設定）
+7. Cognito JWT 検証の追加
+8. スコアリングロジックの改善
 
 ## 13. 変更履歴
 
@@ -375,3 +412,4 @@ packages/
 - 2026-04-26: Go backend の初期責務案、駅サジェスト API 案、ユーザー駅設定 API 案、Cognito 方針を追記
 - 2026-05-16: 次の優先実装を API Route + Langfuse の最小完成に整理
 - 2026-05-31: 検索結果表示を `/results/[id]` と AI SDK `streamText` による streaming 方針で整理
+- 2026-06-28: Server Action を `app/_actions` へ薄い入口として分離し、フォーム変換・検索作成・DB保存取得を `app/lib/server/izakayaSearch/` に整理。次の優先実装を `/results/[id]` の非 streaming 結果表示完成に更新
