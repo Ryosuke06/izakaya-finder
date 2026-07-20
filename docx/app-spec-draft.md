@@ -149,12 +149,17 @@
 ```json
 {
   "request": {
-    "location": "渋谷",
+    "area": {
+      "mode": "station_input",
+      "station": "渋谷"
+    },
     "people": 4,
-    "mood": 70,
+    "budget": "up_to_5000",
+    "moodTags": ["waiwai", "colleagues"],
     "allYouCanDrink": true,
     "beerRequired": false
   },
+  "candidates": [],
   "ranked": [
     {
       "placeId": "abc",
@@ -189,7 +194,7 @@
   - 初期表示では保存済み request を読み取る
   - 生成中 UI は Client Component に分離する
 - 段階的な AI 生成表示は AI SDK の `streamText` を使う方針とする
-  - streaming 用 Route Handler 例: `app/api/results/[id]/stream/route.ts`
+  - streaming 用 Route Handler 例: `src/app/api/results/[id]/stream/route.ts`
   - Client Component から streaming Route Handler を呼び出し、受信した chunk を順に画面へ反映する
   - 生成完了後に最終結果を `Search.result` / `Search.summary` へ保存する
 
@@ -202,28 +207,28 @@
 
 設計上の責務分離:
 
-- `app/_actions/izakayaSearch.ts`
+- `src/app/_actions/izakayaSearch.ts`
   - Server Action としてフォーム送信を受ける
   - 検索作成ユースケースを呼び出す
   - 作成済み `Search.id` を使って `/results/[id]` へ redirect する
-- `app/lib/server/izakayaSearch/formSchema.ts`
+- `src/app/lib/server/izakayaSearch/formSchema.ts`
   - `FormData` をフォーム入力スキーマで検証する
   - `"true"` / `"false"` などのフォーム文字列を boolean へ変換する
   - 最終的に `IzakayaSearchRequestSchema` で内部検索リクエストとして再検証する
-- `app/lib/server/izakayaSearch/createSearch.ts`
+- `src/app/lib/server/izakayaSearch/createSearch.ts`
   - フォーム変換後の検索リクエストから Graph 実行用 state を作る
   - `graph.invoke(...)` を実行する
   - 検索結果を repository 経由で保存する
-- `app/lib/server/izakayaSearch/searchRepository.ts`
+- `src/app/lib/server/izakayaSearch/searchRepository.ts`
   - Prisma による `Search` レコードの保存・取得を担当する
   - `Search.result` は `SearchStateSchema` で検証してから結果ページへ渡す
-- `app/results/[id]/page.tsx`
+- `src/app/results/[id]/page.tsx`
   - `Search.id` をもとに server repository から request / result を読み取る
   - 結果表示の枠を提供する Server Component とする
-- `app/results/[id]/...` の Client Component
+- `src/app/results/[id]/...` の Client Component
   - streaming の受信状態を保持する
   - 生成中の文言や段階的な AI 出力を描画する
-- `app/api/results/[id]/stream/route.ts`
+- `src/app/api/results/[id]/stream/route.ts`
   - AI SDK `streamText` を使って生成結果を streaming する
   - 完了時に DB へ最終結果を保存する
 
@@ -257,7 +262,7 @@
 ### 10.1 現状の考え方
 
 - 現在は単一リポジトリ内に役割別ディレクトリを置く構成とする
-- `app/` は Next.js App Router の画面と API Route の入口を担当する
+- `src/app/` は Next.js App Router の画面と API Route の入口を担当する
 - `ai-api/` は AI による候補収集、順位付け、要約生成などの処理を担当する
 - `backend/` は Go によるユーザー向け API と駅候補管理を担当する
 - この段階では「1つのアプリをフォルダで整理している状態」であり、まだモノレポ化はしていない
@@ -318,27 +323,29 @@ packages/
 - 要約ノード（`ai-api/graphs/nodes/buildSummaryNode.ts`）
   - `request` と `ranked` をもとに LLM へ要約生成を依頼
   - `{ summary: string }` を返却
-- API Route（`app/api/izakaya/search/route.ts`）
+- API Route（`src/app/api/izakaya/search/route.ts`）
   - `req.json()` を `IzakayaSearchRequestSchema` で検証
   - `createInitialSearchState(...)` を生成して `graph.invoke(...)` を実行
   - 成功時は Graph の最終 state を JSON 返却
   - バリデーションエラーは `400`、その他は `500`
 - Server Action / server usecase の責務分離
-  - `app/_actions/izakayaSearch.ts`
+  - `src/app/_actions/izakayaSearch.ts`
     - フォーム送信の入口として `createIzakayaFromForm(...)` を呼び、作成済み検索IDへ redirect
-  - `app/lib/server/izakayaSearch/formSchema.ts`
+  - `src/app/lib/server/izakayaSearch/formSchema.ts`
     - `FormData` をフォーム入力スキーマで検証
     - `z.enum(["true", "false"]).transform(...)` で boolean へ変換
     - `IzakayaSearchRequestSchema` で内部検索リクエストとして最終検証
-  - `app/lib/server/izakayaSearch/createSearch.ts`
+  - `src/app/lib/server/izakayaSearch/createSearch.ts`
     - Graph 実行と DB 保存をまとめる検索作成ユースケース
-  - `app/lib/server/izakayaSearch/searchRepository.ts`
+  - `src/app/lib/server/izakayaSearch/searchRepository.ts`
     - Prisma による `Search` 保存と取得の入口
 - 結果表示ページの初期実装
-  - `app/results/[id]/page.tsx`
+  - `src/app/results/[id]/page.tsx`
     - URL の `id` を取得
     - `findSearchResultById(id)` で保存済み検索結果を取得
-    - 現状は `summary` の表示まで実装途中
+    - `ranked` を走査し、現状は各候補の評価値と Web サイト URL だけを仮表示する
+  - `src/app/results/[id]/components/result_card/index.tsx`
+    - 推薦結果カードの雛形を追加済みだが、描画・ページへの統合は未実装
 - Go backend 方針（`backend/`）
   - `GET /health`
   - `GET /stations/suggestions?q=渋`
@@ -354,12 +361,12 @@ packages/
 
 - API Route の疎通確認
 - UI 画面
-  - `/results/[id]` は `summary` 表示まで実装途中
-  - `ranked` の店舗一覧、理由、スコア、リンク表示は未実装
-  - `findSearchResultById` は `SearchStateSchema.parse(...)` 後に `parsedResult` を返す形へ修正が必要
+  - `/results/[id]` は評価値と Web サイト URL の仮表示まで実装済み
+  - `summary`、店舗名、住所、理由、スコア、リンクを含む一覧表示は未実装
+  - `findSearchResultById` は `SearchStateSchema.parse(...)` の結果を返却済み
   - 存在しない `Search.id` の扱いは `throw new Error(...)` ではなく `notFound()` へ寄せる
 - Langfuse 連携の最小完成
-  - `app/api/izakaya/search/route.ts` には Langfuse callback 呼び出しがある
+  - `src/app/api/izakaya/search/route.ts` には Langfuse callback 呼び出しがある
   - ただし、環境変数未設定時の扱い、命名 typo、`traceId` / `traceUrl` の state 反映は未整理
   - 現状は「未着手」ではなく「途中実装」として扱う
 - Cognito JWT 検証
@@ -380,12 +387,12 @@ packages/
 ## 12. 今後の実装優先順（提案）
 
 1. `/results/[id]` の非 streaming 結果表示を完成する
-   - `findSearchResultById(id)` で `SearchStateSchema.parse(search.result)` の戻り値を使う
+   - `findSearchResultById(id)` が返す検証済み `result` を使う
    - レコード未存在時は `notFound()` を使う
    - `summary` に加えて `ranked` の店舗名、住所、スコア、理由、Google Maps URL を表示する
    - `pnpm -s tsc --noEmit` で型確認する
 2. Server Action / server usecase / repository の責務分離を仕上げる
-   - `app/_actions/izakayaSearch.ts` は redirect だけを担う薄い入口に保つ
+   - `src/app/_actions/izakayaSearch.ts` は redirect だけを担う薄い入口に保つ
    - `formSchema.ts` はフォーム文字列から内部リクエストへの変換だけを担う
    - `createSearch.ts` は Graph 実行と保存のユースケースに限定する
    - `searchRepository.ts` は Prisma と永続化形式を担当する
@@ -413,3 +420,4 @@ packages/
 - 2026-05-16: 次の優先実装を API Route + Langfuse の最小完成に整理
 - 2026-05-31: 検索結果表示を `/results/[id]` と AI SDK `streamText` による streaming 方針で整理
 - 2026-06-28: Server Action を `app/_actions` へ薄い入口として分離し、フォーム変換・検索作成・DB保存取得を `app/lib/server/izakayaSearch/` に整理。次の優先実装を `/results/[id]` の非 streaming 結果表示完成に更新
+- 2026-07-20: Next.js の配置先を `src/app/` へ移行した現状に合わせて、実装パスと結果表示の到達点を更新。`findSearchResultById` は検証済みの `result` を返却する状態を記録。
