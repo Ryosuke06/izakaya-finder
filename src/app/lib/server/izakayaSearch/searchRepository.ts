@@ -1,6 +1,10 @@
 import "server-only";
 
-import { IzakayaSearchRequest, SearchState } from "@/ai-api/schemas/izakaya";
+import {
+  IzakayaSearchRequest,
+  SearchState,
+  SearchStateSchema,
+} from "@/ai-api/schemas/izakaya";
 import { prisma } from "../../db";
 
 export async function createSearchRecord(
@@ -22,4 +26,27 @@ export async function createSearchRecord(
       summary: result.summary,
     },
   });
+}
+
+export async function findSearchResultById(id: string) {
+  const search = await prisma.search.findUnique({
+    where: {
+      id,
+    },
+  });
+
+  if (!search) {
+    throw new Error(`${id}に紐付いたデータは存在しません`);
+  }
+
+  const parsedResult = SearchStateSchema.parse(search.result);
+
+  return {
+    id: search.id,
+    station: search.station,
+    people: search.people,
+    budget: search.budget,
+    summary: search.summary,
+    result: parsedResult,
+  };
 }
