@@ -398,6 +398,74 @@ packages/
   - 現在地を中心に候補を検索する
   - 距離順の候補表示や、検索範囲の明示が必要になる
 
+### 11.5 候補取得・根拠検証フロー（2026-08-01）
+
+推薦の不変条件は「再検索時にソフト条件を検索語から外すことはあっても、ハード条件を満たさない店舗は推薦しない」とする。
+
+Tavilyによる候補ごとの根拠収集には、必ず上限を設ける。初期値は次のとおりとし、`select_verification_targets`はこの件数を超える候補を`research_candidate`へ送らない。
+
+```ts
+const MAX_TAVILY_TARGETS = 3;
+```
+
+これにより、検索リクエストごとの待ち時間、API利用量、並列実行数を予測可能に保つ。上限超過の候補はGoogleの構造化データによる一次判定までに留め、Tavily検証対象の優先順位は未確認のハード条件、自由記述との関連性、Google評価を基準に決める。
+
+```mermaid
+flowchart TD
+    START([開始]) --> PLAN["1. Google検索計画<br/>plan_places_search"]
+    PLAN --> GOOGLE["2. Google Places Text Search<br/>fetch_google_candidates"]
+    GOOGLE --> NORMALIZE["3. 正規化・重複排除<br/>normalize_candidates"]
+    NORMALIZE --> SCREEN["4. 既知のハード不適合を除外<br/>screen_known_hard_failures"]
+
+    SCREEN -->|候補なし・初回かつソフト検索語あり| RETRY["5. ソフト検索語だけ除外<br/>retry_without_soft_terms"]
+    RETRY --> PLAN
+    SCREEN -->|候補なし・再試行済み または除外できるソフト語なし| NORESULT["候補なし回答<br/>build_no_result"]
+    NORESULT --> END([終了])
+
+    SCREEN -->|候補あり| SELECT["6. 検証対象を選定<br/>select_verification_targets"]
+
+    subgraph FANOUT["Tavily検証（最大3件・Sendで並列）"]
+        RESEARCH["7. 根拠を収集<br/>research_candidate"]
+        JUDGE["8. 根拠を判定<br/>judge_evidence"]
+        RESEARCH --> JUDGE
+    end
+
+    SELECT -->|候補ごとにSend| RESEARCH
+    JUDGE --> MERGE["検証結果を集約<br/>state reducer"]
+    MERGE --> GATE["9. 最終ハード条件ゲート<br/>apply_final_hard_gate"]
+    GATE -->|推薦可能な候補あり| RANK["10. ソフト条件で順位付け<br/>rank_candidates"]
+    GATE -->|すべて不適合 または未確認| NORESULT
+    RANK --> VALIDATE["11. 出力検証・整形<br/>validate_and_format"]
+    VALIDATE --> END
+```
+
+構造化されたUI入力は、LLMによる `parse_intent` で再解析しない。`area`、`people`、`budget`、`allYouCanDrink`、`beerRequired` は入力時点でハード条件として扱い、`moodTags` は原則ソフト条件とする。`preferences` がある場合だけ、必要に応じて自由記述からハード候補・ソフト候補・判断不能条件を補助的に抽出する。
+
+#### Node の責務
+
+| Node | 役割 | 守るルール |
+| --- | --- | --- |
+| `plan_places_search` | 構造化入力からGoogle Text Searchのクエリ、店舗タイプ、FieldMaskを決める | ハード条件を記録し、検索クエリへの採用有無と最終条件判定を混同しない |
+| `fetch_google_candidates` | Google Text Searchで実在候補を取得する | `placeId`を以後の店舗識別子として保持する |
+| `normalize_candidates` | `Candidate`へ変換し、`placeId`重複、閉業・移転済み候補を整理する | 同一店舗を二重評価しない |
+| `screen_known_hard_failures` | Googleの構造化データで明確にハード不適合な候補だけを除外する | 情報不足は`unknown`として残し、この時点では除外しない |
+| `retry_without_soft_terms` | 初回検索に含めたソフト検索語だけを除外して再検索する | 駅、人数、予算、飲み放題などのハード条件は外さず、再試行は1回までとする |
+| `build_no_result` | 推薦可能な候補がないことを返す | ハード条件を緩和した店舗を代替推薦として混ぜない |
+| `select_verification_targets` | Tavilyで検証する候補を `MAX_TAVILY_TARGETS = 3` 件までに絞る | ハード条件が`unknown`の候補や自由記述に関係する候補を優先する。上限超過の候補は`research_candidate`へ送らない |
+| `research_candidate` | Tavilyで公式サイト、予約サイト、メニューを調査する | `店舗名 + 住所 + 未確認条件`で検索し、根拠URLと抜粋を保存する |
+| `judge_evidence` | 収集した根拠から条件ごとに`yes / no / unknown`を判定する | 根拠URLなしで`yes`にせず、曖昧な情報は`unknown`にする |
+| `apply_final_hard_gate` | ハード条件を最終確認する | 全ハード条件が`yes`の候補だけを推薦対象にし、`no`は除外、`unknown`は通常推薦に入れない |
+| `rank_candidates` | 通過候補をソフト条件、評価、価格、根拠の強さで並び替える | ハード条件で落ちた候補を採点しない |
+| `validate_and_format` | APIレスポンスに整形し、安全性を検証する | `placeId`なし、根拠なしの断定、ハード不適合な候補を出力しない |
+
+`state reducer` は外部APIやLLMを呼ぶNodeではない。`Send`で並列実行された候補ごとの検証結果を `verificationResults[]` に追加結合するstate更新規則である。TypeScriptのLangGraphでも、`Send`を使って候補ごとのMap-Reduce型検証を構成できる。
+
+#### 最終ハード条件の扱い
+
+- `yes`: 根拠により条件を満たすと確認できた。推薦対象にできる。
+- `no`: 根拠により条件を満たさないと確認できた。除外する。
+- `unknown`: 情報が不足している。通常の推薦一覧には入れず、必要なら「要確認候補」として別に返す。
+
 ## 12. 今後の実装優先順（提案）
 
 1. `/results/[id]` の非 streaming 結果表示を完成する
@@ -419,6 +487,7 @@ packages/
    - 現状の `fetchCandidates` は LLM に候補店舗を生成させている
    - 架空店舗混入リスクを下げるため、Google Places API の Text Search (New) で「`{駅名}駅 居酒屋`」を検索する構成へ寄せる
    - Nearby Search (New) は、厳密な半径指定または現在地検索が要件化されるまで導入を見送る
+   - `11.5` のフローに沿って、Google候補取得、根拠収集、最終ハード条件ゲートを段階的に追加する
 5. AI SDK streaming 方針で段階表示を追加する
 6. Go backend と UI の接続（駅サジェスト・ユーザー駅設定）
 7. Cognito JWT 検証の追加
@@ -437,3 +506,4 @@ packages/
 - 2026-06-28: Server Action を `app/_actions` へ薄い入口として分離し、フォーム変換・検索作成・DB保存取得を `app/lib/server/izakayaSearch/` に整理。次の優先実装を `/results/[id]` の非 streaming 結果表示完成に更新
 - 2026-07-20: Next.js の配置先を `src/app/` へ移行した現状に合わせて、実装パスと結果表示の到達点を更新。`findSearchResultById` は検証済みの `result` を返却する状態を記録。
 - 2026-08-01: 駅名からの候補取得には Google Places Text Search (New) を採用し、厳密な半径指定を必要としない現段階では Nearby Search (New) を使用しない方針を記録。
+- 2026-08-01: 再検索でソフト条件のみを外し、最終ハード条件ゲートで不適合・未確認候補を推薦から除外する候補取得・根拠検証フローを記録。
