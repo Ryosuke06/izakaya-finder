@@ -384,6 +384,20 @@ packages/
   - 現状の `fetchCandidates` は LLM による候補生成のため、店名・住所・Google Maps URL の実在保証が弱い
   - 次の改善候補として、`fetchCandidates` を Google Places API などの実データ取得へ寄せる
 
+### 11.4 Google Places による候補取得方針（2026-08-01）
+
+- 駅名入力から居酒屋候補を取得する初期実装では、Google Places API の Text Search (New) を使用する
+  - 検索クエリは「`{駅名}駅 居酒屋`」を基本とする
+  - Google Places は実在する候補店舗の収集を担当し、ユーザーの詳細条件との整合性評価は後段へ分離する
+- Nearby Search (New) は現時点では使用しない
+  - Nearby Search には、中心座標と半径を指定して「半径何 m 以内」を厳密に絞り込める利点がある
+  - 現在の要件は「駅周辺から 5〜10 件程度の候補を取得すること」であり、厳密な半径指定を必要としていない
+  - Text Search で駅名と居酒屋カテゴリを同時に検索できるため、駅の緯度・経度を取得してから Nearby Search を呼ぶ追加処理は、現段階では設けない
+- 以下の要件が追加された場合は、Nearby Search の導入を再検討する
+  - 駅から半径 500 m 以内など、検索範囲を厳密に保証する
+  - 現在地を中心に候補を検索する
+  - 距離順の候補表示や、検索範囲の明示が必要になる
+
 ## 12. 今後の実装優先順（提案）
 
 1. `/results/[id]` の非 streaming 結果表示を完成する
@@ -403,7 +417,8 @@ packages/
    - 可能なら `traceId` / `traceUrl` をレスポンス state に含める
 4. 候補取得を LLM 生成から実データ寄りにする
    - 現状の `fetchCandidates` は LLM に候補店舗を生成させている
-   - 架空店舗混入リスクを下げるため、Google Places API など実データ取得へ寄せる
+   - 架空店舗混入リスクを下げるため、Google Places API の Text Search (New) で「`{駅名}駅 居酒屋`」を検索する構成へ寄せる
+   - Nearby Search (New) は、厳密な半径指定または現在地検索が要件化されるまで導入を見送る
 5. AI SDK streaming 方針で段階表示を追加する
 6. Go backend と UI の接続（駅サジェスト・ユーザー駅設定）
 7. Cognito JWT 検証の追加
@@ -421,3 +436,4 @@ packages/
 - 2026-05-31: 検索結果表示を `/results/[id]` と AI SDK `streamText` による streaming 方針で整理
 - 2026-06-28: Server Action を `app/_actions` へ薄い入口として分離し、フォーム変換・検索作成・DB保存取得を `app/lib/server/izakayaSearch/` に整理。次の優先実装を `/results/[id]` の非 streaming 結果表示完成に更新
 - 2026-07-20: Next.js の配置先を `src/app/` へ移行した現状に合わせて、実装パスと結果表示の到達点を更新。`findSearchResultById` は検証済みの `result` を返却する状態を記録。
+- 2026-08-01: 駅名からの候補取得には Google Places Text Search (New) を採用し、厳密な半径指定を必要としない現段階では Nearby Search (New) を使用しない方針を記録。
