@@ -72,3 +72,24 @@ export const SearchStateSchema = z.object({
 });
 
 export type SearchState = z.infer<typeof SearchStateSchema>;
+
+//Prisma内のデータベースの方
+export const searchResult = z.object({
+  id: z.string(),
+  allYouCanDrink: z.boolean(),
+  beerRequired: z.boolean(),
+  budget: z.enum(["up_to_3000", "up_to_5000", "up_to_8000", "unspecified"]),
+  createAt: z.date(),
+  moodTags: z.enum([
+    "waiwai",
+    "calm",
+    "date",
+    "colleagues",
+    "with_boss",
+    "solo",
+  ]),
+  people: z.number(),
+  performance: z.string(),
+  request: IzakayaSearchRequestSchema,
+  result: SearchStateSchema,
+});
