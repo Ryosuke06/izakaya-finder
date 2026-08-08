@@ -1,4 +1,5 @@
 import { findSearchResultById } from "@/src/app/lib/server/izakayaSearch/searchRepository";
+import ResultCard from "./components/result_card";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -15,13 +16,17 @@ export default async function Results({ params }: Props) {
   return (
     <>
       <main>
-        <h2>結果</h2>
+        <h1 className="text-xl m-5">結果</h1>
 
         {search.result.ranked.map((result) => (
-          <>
-            <p>{result.meta.rating}</p>
-            <p>{result.meta.website}</p>
-          </>
+          <ResultCard
+            key={result.placeId}
+            name={result.name}
+            website={result.meta.website}
+            googleMap={result.meta.googleMapsUrl}
+            score={result.score}
+            reasons={result.reasons}
+          />
         ))}
       </main>
     </>
