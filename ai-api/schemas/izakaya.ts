@@ -28,15 +28,14 @@ export const CandidateSchema = z.object({
   placeId: z.string(),
   name: z.string(),
   address: z.string(),
-  lat: z.number(),
-  lng: z.number(),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
   rating: z.number().optional(),
   userRatingsTotal: z.number().optional(),
-  priceLevel: z.number().optional(),
-  website: z.string(),
-  googleMapsUrl: z.string(),
-  editorialSummary: z.string().optional(),
-  reviewsText: z.array(z.string()),
+  priceLevel: z.string().optional(),
+  website: z.string().optional(),
+  googleMapsUri: z.string().optional(),
+  businessStatus: z.string().optional(),
 });
 
 export type Candidate = z.infer<typeof CandidateSchema>;
@@ -54,16 +53,62 @@ export const RecommendationItemSchema = z.object({
   meta: z.object({
     rating: z.number().optional(),
     userRatingsTotal: z.number().optional(),
-    priceLevel: z.number().optional(),
-    googleMapsUrl: z.string().optional(),
+    priceLevel: z.string().optional(),
+    googleMapsUri: z.string().optional(),
     website: z.string().optional(),
   }),
 });
 
 export type RecommendationItem = z.infer<typeof RecommendationItemSchema>;
 
+// ここからNodeの再考案を書く
+
+export const PlanPlaceSearchNodeSchema = z.object({
+  textQuery: z.string(),
+  hardQuery: z.array(z.string()),
+  softQuery: z.array(z.string()),
+  retryCount: z.union([z.literal(0), z.literal(1)]),
+});
+
+export type PlanPlaceSearchNode = z.infer<typeof PlanPlaceSearchNodeSchema>;
+
+// 以下はNodeのスキーマではないです
+
+export const GooglePlaceSchema = z.object({
+  id: z.string(),
+  displayName: z.object({
+    text: z.string(),
+    languageCode: z.string().optional(),
+  }),
+  formattedAddress: z.string(),
+  location: z.object({
+    latitude: z.number(),
+    longitude: z.number(),
+  }),
+  googleMapsUri: z.string().optional(),
+  primaryType: z.string().optional(),
+  types: z.array(z.string()).optional(),
+  rating: z.number().optional(),
+  userRatingCount: z.number().optional(),
+  priceLevel: z.string().optional(),
+  businessStatus: z.string().optional(),
+  websiteUri: z.string().optional(),
+});
+
+export type GooglePlace = z.infer<typeof GooglePlaceSchema>;
+
+export const GooglePlaceTextSearchResponseSchema = z.object({
+  places: z.array(GooglePlaceSchema).default([]),
+});
+
+export type GooglePlaceTextSearchResponse = z.infer<
+  typeof GooglePlaceTextSearchResponseSchema
+>;
+
 export const SearchStateSchema = z.object({
   request: IzakayaSearchRequestSchema,
+
+  planPlaceSearch: PlanPlaceSearchNodeSchema.nullable(),
   candidates: z.array(CandidateSchema),
   ranked: z.array(RecommendationItemSchema),
   summary: z.string(),
