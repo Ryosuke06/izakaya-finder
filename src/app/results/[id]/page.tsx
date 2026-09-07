@@ -1,5 +1,6 @@
 import { findSearchResultById } from "@/src/app/lib/server/izakayaSearch/searchRepository";
 import ResultCard from "./components/result_card";
+import { notFound } from "next/navigation";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -10,7 +11,7 @@ export default async function Results({ params }: Props) {
   const search = await findSearchResultById(id);
 
   if (!search) {
-    throw new Error(`${id}が示すリサーチ結果はありません`);
+    notFound();
   }
 
   return (
@@ -23,9 +24,10 @@ export default async function Results({ params }: Props) {
             key={result.placeId}
             name={result.name}
             website={result.meta.website}
-            googleMap={result.meta.googleMapsUrl}
+            googleMap={result.meta.googleMapsUri}
             score={result.score}
             reasons={result.reasons}
+            address={result.address}
           />
         ))}
       </main>

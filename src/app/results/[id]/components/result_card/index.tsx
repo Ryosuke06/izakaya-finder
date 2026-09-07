@@ -1,19 +1,16 @@
 type Props = {
-  key: string;
   name: string;
   website: string | undefined;
   googleMap: string | undefined;
   score: number;
   reasons: string[];
+  address: string | undefined;
 };
 
 export default function ResultCard(params: Props) {
   return (
     <>
-      <div
-        key={params.key}
-        className="bg-neutral-primary-soft block  p-6 border border-default rounded-base shadow-xs hover:bg-neutral-secondary-medium"
-      >
+      <div className="bg-neutral-primary-soft block  p-6 border border-default rounded-base shadow-xs hover:bg-neutral-secondary-medium">
         <h5 className="mb-3 text-2xl font-semibold tracking-tight text-heading leading-8">
           {params.name}
         </h5>
@@ -30,13 +27,14 @@ export default function ResultCard(params: Props) {
               <li>
                 reason:
                 <ul>
-                  {params.reasons.map((reason) => {
-                    return <li>{reason}</li>;
+                  {params.reasons.map((reason, index) => {
+                    return <li key={index}>{reason}</li>;
                   })}
                 </ul>
               </li>
             </div>
           </ul>
+          <div className="pt-3">{params.address}</div>
         </div>
       </div>
     </>

@@ -36,7 +36,7 @@ export async function findSearchResultById(id: string) {
   });
 
   if (!search) {
-    throw new Error(`${id}に紐付いたデータは存在しません`);
+    return null;
   }
 
   const parsedResult = SearchStateSchema.parse(search.result);
