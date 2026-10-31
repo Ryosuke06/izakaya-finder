@@ -1,8 +1,65 @@
 # Izakaya Finder 仕様書（下書き）
 
-- ドキュメント版: v0.1-draft
+- ドキュメント版: v0.2-draft
+- 最終更新日: 2026-10-31
 - 作成日: 2026-02-21
 - 対象リポジトリ: `izakaya-finder`
+
+## 0. 最新の構成決定（2026-10-31）
+
+Next.jsを外し、Vite＋React、Go API、Node.js AIサービスのモノレポへ移行する。これは設計決定であり、移行実装はまだ行っていない。以下の既存パスは移行前の実装を指す。旧方針と矛盾する場合は本節を優先する。
+
+### 変更の経緯
+
+Next.jsでAIの応答を待つ構成について、TTL・実行時間制限に関係するエラーが発生する懸念があると指摘されたことを背景に、バックエンドを独立させる判断をした。実際にエラーが発生したという記録ではない。「TTL」が具体的にどの制限を指すか、どの実行・配信環境で制限を受けるかは未確認であり、Next.js自体に一律の制限があるとは断定しない。
+
+Goへ分離するだけでタイムアウトを解消できるとは扱わない。GoからAIサービスへの通信、外部API、プロキシを含むタイムアウトとキャンセルを設計する。長時間処理を同期HTTPで待つか、検索IDを返して非同期処理するかは、移行時の検討事項とする。
+
+### 採用する構成
+
+```text
+izakaya-finder/
+├ apps/
+│  ├ web/             Vite＋React
+│  ├ backend/         Go API
+│  └ ai-service/      TypeScript／Node.jsのAIサービス
+├ compose.yaml        開発用DB
+├ Taskfile.yaml       全体の開発コマンド
+├ pnpm-workspace.yaml
+├ package.json
+└ docx/
+```
+
+YAMLファイルの拡張子は `.yaml` に統一する。`package.json` や `tsconfig.json` など、ツールが要求するJSONファイルはそのまま使用する。Taskfileによる起動・確認・テストの集約を目指すが、具体的なタスク定義は未実装。
+
+### 通信と責務
+
+```text
+React → Go API → Node.js AIサービス → Google Places／Gemini
+           └ PostgreSQLへの保存・取得
+```
+
+- フロントはフォーム入力の保持・送信、送信中・エラー・結果表示に絞る。業務上の条件解釈や採点は行わず、Node.js AIサービスやDBを直接呼ばない。
+- Go APIをフロント向けの唯一のバックエンド入口にする。既存のServer ActionとAPI Routeによる入口の重複は移行時に解消する。
+- HandlerはHTTPリクエストDTOの読み取り、形式検証、入力値の変換、ユースケース入力への整形とHTTPレスポンス作成を担当する。
+- Application／Use caseは検索の進行、AIサービス呼び出し、保存を調整する。
+- Domainは人数・予算・必須条件などの業務ルールと最終的な推薦可否を担う。業務判断をHandlerへ集中させない。
+- InfrastructureはAIサービスへのHTTP通信とDBアクセスを担当する。
+- Node.js AIサービスは既存のTypeScript／LangGraphを活かし、Google Placesによる候補取得、Geminiによる評価・要約、根拠情報の返却を担う。Go側でAI出力を検証してから利用する。
+- Node.jsはフロント開発時のVite実行にも使うが、ブラウザ上のReactとは別の実行環境である。Go APIとAIサービスは別プロセスとして起動し、同一PCで開発できる。
+- APIキーとDB接続情報はサーバー側に置く。DB操作の責務はGoへ移す方針とし、既存Prismaのデータ・スキーマの移行とGo側のDBライブラリ選定は未決定。
+
+### 移行順と確認事項
+
+1. フロント→Go、Go→AIサービスのリクエスト・レスポンス・エラー契約を決める。
+2. タイムアウト・キャンセル・同期／非同期実行と結果取得方法を決める。
+3. GoのHandler／Use case／Domain／InfrastructureとDBアクセス方針を設計する。
+4. AI処理をNext.jsから独立させ、`apps/ai-service/` へ移す。
+5. Reactのフォーム・結果画面を `apps/web/` へ移し、Go APIへ接続する。
+6. `Taskfile.yaml` に開発コマンドを集約し、正常系・入力不正・AI失敗・タイムアウト・結果取得を確認する。
+7. 動作確認後にNext.jsのコードと依存関係を除去し、ドキュメントを実装と突合する。
+
+認証、駅サジェスト、根拠収集とハード条件ゲートの要件は維持する。Next.js固有のServer Component、Route Handler、AI SDK `streamText` を前提とした旧表示方式は採用を確定していない。進捗通知方式はGo APIとの契約に合わせて再設計する。
 
 ## 1. 目的
 
@@ -182,61 +239,11 @@
 }
 ```
 
-### 7.4 結果表示と Streaming 方針
+### 7.4 結果表示と進捗通知（移行先）
 
-検索ボタン押下後は、検索リクエストを `Search` レコードとして保存し、結果表示ページへ遷移する。
+ReactがGo APIへ入力を送り、Go APIが検索処理と保存・取得を担当する。結果はReactで表示する。検索ID、状態、結果取得APIの形式、および同期／非同期実行・進捗通知方式は第0節の移行手順で決定する。Server Actions、Server Components、Next.js Route Handlerを使用する旧案は撤回する。
 
-- 送信直後に `Search` レコードを作成する
-  - 初期状態は `pending` 相当として扱う
-  - リクエスト内容、人数、予算、飲み放題/ビール条件、雰囲気、自由記述を保存する
-- 作成した `Search.id` を使って `/results/[id]` へ redirect する
-- `/results/[id]` は結果表示用の Server Component とする
-  - 初期表示では保存済み request を読み取る
-  - 生成中 UI は Client Component に分離する
-- 段階的な AI 生成表示は AI SDK の `streamText` を使う方針とする
-  - streaming 用 Route Handler 例: `src/app/api/results/[id]/stream/route.ts`
-  - Client Component から streaming Route Handler を呼び出し、受信した chunk を順に画面へ反映する
-  - 生成完了後に最終結果を `Search.result` / `Search.summary` へ保存する
-
-初期段階の表示ステップは以下を想定する。
-
-1. 候補を探しています
-2. 候補を評価しています
-3. 要約を作成しています
-4. 完了
-
-設計上の責務分離:
-
-- `src/app/_actions/izakayaSearch.ts`
-  - Server Action としてフォーム送信を受ける
-  - 検索作成ユースケースを呼び出す
-  - 作成済み `Search.id` を使って `/results/[id]` へ redirect する
-- `src/app/lib/server/izakayaSearch/formSchema.ts`
-  - `FormData` をフォーム入力スキーマで検証する
-  - `"true"` / `"false"` などのフォーム文字列を boolean へ変換する
-  - 最終的に `IzakayaSearchRequestSchema` で内部検索リクエストとして再検証する
-- `src/app/lib/server/izakayaSearch/createSearch.ts`
-  - フォーム変換後の検索リクエストから Graph 実行用 state を作る
-  - `graph.invoke(...)` を実行する
-  - 検索結果を repository 経由で保存する
-- `src/app/lib/server/izakayaSearch/searchRepository.ts`
-  - Prisma による `Search` レコードの保存・取得を担当する
-  - `Search.result` は `SearchStateSchema` で検証してから結果ページへ渡す
-- `src/app/results/[id]/page.tsx`
-  - `Search.id` をもとに server repository から request / result を読み取る
-  - 結果表示の枠を提供する Server Component とする
-- `src/app/results/[id]/...` の Client Component
-  - streaming の受信状態を保持する
-  - 生成中の文言や段階的な AI 出力を描画する
-- `src/app/api/results/[id]/stream/route.ts`
-  - AI SDK `streamText` を使って生成結果を streaming する
-  - 完了時に DB へ最終結果を保存する
-
-参考:
-
-- Next.js Route Handler streaming: https://nextjs.org/docs/app/api-reference/file-conventions/route#streaming
-- Next.js loading / Suspense streaming: https://nextjs.org/learn/dashboard-app/streaming
-- AI SDK `streamText`: https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text
+第7.1〜7.3節のURLとJSONは旧APIの参考案であり、Go APIの確定済み契約ではない。
 
 ## 8. 非機能要件（ドラフト）
 
@@ -245,68 +252,22 @@
 - 保守性: LangGraph state を中心に責務分離
 - パフォーマンス: 候補収集と評価の段階を分け、将来並列化可能な構造にする
 
-## 9. 技術スタック（現状）
+## 9. 技術スタック
 
-- Next.js 16
-- React 19
-- TypeScript
-- Go（backend API）
-- LangChain / LangGraph
-- Zod
-- OpenAI SDK（導入済み）
-- Google GenAI 連携パッケージ（導入済み）
-- AI SDK（導入予定: `streamText` による生成結果の段階表示）
+- 移行前: Next.js／React／TypeScript、LangGraph／Gemini／Google Places、Zod、Prisma／PostgreSQL
+- 移行先: Vite＋React、Go API、TypeScript／Node.js AIサービス、LangGraph／Gemini／Google Places、PostgreSQL
+- 観測性: Langfuseを継続検討。GoとAIサービスをまたぐ追跡方法は未設計
+- Go側のDBライブラリ、HTTPルーター、フロントのルーター、進捗通知方式は未決定
 
-## 10. リポジトリ構成方針（現状と将来）
+## 10. リポジトリ構成方針
 
-### 10.1 現状の考え方
+第0節の `apps/web/`、`apps/backend/`、`apps/ai-service/` のモノレポ構成を採用する。従来の「モノレポ化は将来検討」「Goは駅設定のみを担当」という方針を変更し、Goが検索APIを含むバックエンドの入口を担う。
 
-- 現在は単一リポジトリ内に役割別ディレクトリを置く構成とする
-- `src/app/` は Next.js App Router の画面と API Route の入口を担当する
-- `ai-api/` は AI による候補収集、順位付け、要約生成などの処理を担当する
-- `backend/` は Go によるユーザー向け API と駅候補管理を担当する
-- この段階では「1つのアプリをフォルダで整理している状態」であり、まだモノレポ化はしていない
+`pnpm-workspace.yaml` はJavaScript／TypeScript側のワークスペースを管理し、GoはGo Modulesで依存関係を管理する。全体の開発操作は `Taskfile.yaml` へ集約する。共通パッケージは必要になった段階で検討し、今回の確定構成には追加しない。
 
-### 10.1.1 Go backend の責務
+## 11. 移行前の実装状況と検索要件
 
-- `backend/` は Next.js / LangGraph から独立した Go API として実装する
-- 初期責務は以下に絞る
-  - ヘルスチェック
-  - 駅サジェスト
-  - ユーザーごとの駅設定（自宅・よく使う駅など）
-- 居酒屋検索 AI 本体は当面 `ai-api/` の TypeScript / LangGraph 側に残す
-- 認証は将来的に AWS Cognito を使う方針
-  - 現時点では `AUTH_MODE=none|dev|cognito` の設定受け口を用意する
-  - `cognito` モードの JWT 検証は未実装で、今後の追加対象とする
-
-### 10.2 モノレポ化に関する判断
-
-- 将来的にはモノレポ構成へ移行する方針とする
-- ただし、現時点では開発初期のため、無理に分割せずルート直下構成を優先する
-- `backend/` や AI 処理が独立した実行単位、デプロイ単位として必要になったタイミングで切り出す
-- モノレポは「複数アプリや共通パッケージを1つのリポジトリで管理する方法」として扱う
-- マイクロサービス化は別の設計判断であり、モノレポと同義ではない
-
-### 10.3 将来の想定ディレクトリ例
-
-```text
-apps/
-  web/        Next.js の画面
-  backend/    API サーバー
-  ai-api/     AI 処理サービス
-packages/
-  shared/     zod schema / TypeScript 型 / 共通ロジック
-  ui/         共通 UI コンポーネント
-```
-
-### 10.4 モノレポ化の狙い
-
-- `web`、`backend`、`ai-api` の責務を明確にする
-- 共通の `zod` schema や TypeScript 型を `packages/shared` で再利用しやすくする
-- 将来のデプロイ分離に備えつつ、コード管理は1つのリポジトリにまとめる
-- 開発初期は複雑化を避け、必要になった時点で段階的に移行する
-
-## 11. 現状実装状況
+第11.1〜11.3節は旧実装時点の記録を含む。2026-10-31のコード確認ではGoogle Places接続、結果カード・要約表示、未存在IDの404は実装済み。移行完了を意味しない。第11.4〜11.6節の検索要件は移行後も維持する。
 
 ### 11.1 実装済み
 
@@ -475,33 +436,9 @@ flowchart TD
   - 飲み放題、ビール、人数、予算などのハード条件は、Googleの構造化データ・Tavilyの根拠・最終ハード条件ゲートで別途確認する
 - 将来、居酒屋・バー・レストランを意図的にバランスよく収集する必要が生じた場合は、店舗Typeまたは検索語を分けて複数回Text Searchを行い、`placeId`で重複排除して統合する方針を検討する
 
-## 12. 今後の実装優先順（提案）
+## 12. 今後の実装優先順
 
-1. `/results/[id]` の非 streaming 結果表示を完成する
-   - `findSearchResultById(id)` が返す検証済み `result` を使う
-   - レコード未存在時は `notFound()` を使う
-   - `summary` に加えて `ranked` の店舗名、住所、スコア、理由、Google Maps URL を表示する
-   - `pnpm -s tsc --noEmit` で型確認する
-2. Server Action / server usecase / repository の責務分離を仕上げる
-   - `src/app/_actions/izakayaSearch.ts` は redirect だけを担う薄い入口に保つ
-   - `formSchema.ts` はフォーム文字列から内部リクエストへの変換だけを担う
-   - `createSearch.ts` は Graph 実行と保存のユースケースに限定する
-   - `searchRepository.ts` は Prisma と永続化形式を担当する
-3. API Route + Langfuse の最小完成
-   - `POST /api/izakaya/search` を実際に1回通す
-   - Langfuse 環境変数が未設定でも検索 API が壊れないようにする
-   - `createLangfuseCallback` / `izakayaLangGtaph` などの typo を整理する
-   - 可能なら `traceId` / `traceUrl` をレスポンス state に含める
-4. 候補取得を LLM 生成から実データ寄りにする
-   - 現状の `fetchCandidates` は LLM に候補店舗を生成させている
-   - 架空店舗混入リスクを下げるため、Google Places API の Text Search (New) で「`{駅名}駅 居酒屋`」を検索する構成へ寄せる
-   - 初期実装では `includedType` を指定せず、飲酒可能なレストランやバーも候補に残す
-   - Nearby Search (New) は、厳密な半径指定または現在地検索が要件化されるまで導入を見送る
-   - `11.5` のフローに沿って、Google候補取得、根拠収集、最終ハード条件ゲートを段階的に追加する
-5. AI SDK streaming 方針で段階表示を追加する
-6. Go backend と UI の接続（駅サジェスト・ユーザー駅設定）
-7. Cognito JWT 検証の追加
-8. スコアリングロジックの改善
+第0節の移行順を優先する。旧方針のNext.js向け機能追加やstreaming Route Handler実装は進めない。移行と並行して機能を拡張する範囲は別途決める。
 
 ## 13. 変更履歴
 
@@ -518,3 +455,5 @@ flowchart TD
 - 2026-08-01: 駅名からの候補取得には Google Places Text Search (New) を採用し、厳密な半径指定を必要としない現段階では Nearby Search (New) を使用しない方針を記録。
 - 2026-08-01: 再検索でソフト条件のみを外し、最終ハード条件ゲートで不適合・未確認候補を推薦から除外する候補取得・根拠検証フローを記録。
 - 2026-08-08: 初期のText Searchでは `includedType` を指定せず、居酒屋を中心に飲酒可能なレストランやバーも候補へ残す方針を記録。
+
+- 2026-10-31: AI応答待ちに伴うタイムアウト関連エラーの懸念を指摘されたことを背景に、Next.jsからVite＋React／Go API／Node.js AIサービスへの移行を決定。apps配下の構成、DDDの責務、.yaml統一、移行順を記録。実際のエラー発生や原因確定を意味せず、今回はドキュメントのみ更新。
