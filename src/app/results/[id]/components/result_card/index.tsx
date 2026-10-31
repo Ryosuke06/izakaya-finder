@@ -4,7 +4,7 @@ type Props = {
   googleMap: string | undefined;
   score: number;
   reasons: string[];
-  address: string | undefined;
+  address: string;
 };
 
 export default function ResultCard(params: Props) {

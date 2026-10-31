@@ -19,17 +19,21 @@ export default async function Results({ params }: Props) {
       <main>
         <h1 className="text-xl m-5">結果</h1>
 
-        {search.result.ranked.map((result) => (
-          <ResultCard
-            key={result.placeId}
-            name={result.name}
-            website={result.meta.website}
-            googleMap={result.meta.googleMapsUri}
-            score={result.score}
-            reasons={result.reasons}
-            address={result.address}
-          />
-        ))}
+        <p className="m-5">{search.result.summary}</p>
+
+        <div className="grid gap-3">
+          {search.result.ranked.map((result) => (
+            <ResultCard
+              key={result.placeId}
+              name={result.name}
+              website={result.meta.website}
+              googleMap={result.meta.googleMapsUri}
+              score={result.score}
+              reasons={result.reasons}
+              address={result.address}
+            />
+          ))}
+        </div>
       </main>
     </>
   );

@@ -6,7 +6,6 @@ import {
   RecommendationItem,
   SearchState,
 } from "../schemas/izakaya";
-import { fetchCandidates } from "./nodes/fetchCandidatesNode";
 import { rankCandidates } from "./nodes/rankCandidatesNode";
 import { buildSummary } from "./nodes/buildSummaryNode";
 import { planPlacesSearch } from "./nodes/planPlacesSearch";
